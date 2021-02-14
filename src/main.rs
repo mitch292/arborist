@@ -2,9 +2,14 @@ use std::io;
 use std::io::{Read, Write, Stdout, Stdin, Bytes};
 use std::convert::TryFrom;
 use std::string::FromUtf8Error;
-use git2::{Oid, Repository};
+use git2::{BranchType, Oid, Repository};
 use chrono::prelude::*;
 use chrono::Duration;
+
+// TODO: 
+//  1. Color the output to the terminal
+//  2. Option to delete remote branches
+//  3. Create an App struct where stdout and stdin live
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -15,21 +20,19 @@ fn main() {
     
         let mut stdout = io::stdout();
         let mut stdin = io::stdin().bytes();
-    
-        for branch in &mut get_branches(&repo)? {
-            match get_branch_action_from_user(&mut stdout, &mut stdin, &branch)? {
-                BranchAction::Quit => {
-                    write!(stdout, "\r\n")?;
-                },
-                BranchAction::Keep => {},
-                BranchAction::Delete => {
-                    branch.branch.delete()?;
-                },
+
+        let mut branches = get_branches(&repo)?;
+
+        if branches.is_empty() {
+            write!(stdout, "Found no branches (master is ignored)\r\n")?;
+        } else {
+            for branch in &mut branches {
+                act_on_branch(branch, &mut stdout, &mut stdin)?;
             }
-    
         }
 
        Ok(())
+
     })();
 
     crossterm::terminal::disable_raw_mode().ok();
@@ -43,6 +46,34 @@ fn main() {
     }
 }
 
+fn act_on_branch(
+    branch: &mut Branch,
+    stdout: &mut Stdout,
+    stdin: &mut Bytes<Stdin>
+) -> Result<()> {
+    if branch.is_head {
+        write!(
+            stdout,
+            "Ignoring '{}' because it is the current branch\r\n",
+            branch.name
+        )?;
+    } else {
+        match get_branch_action_from_user(stdout, stdin, &branch)? {
+            BranchAction::Quit => return Ok(()),
+            BranchAction::Keep => {},
+            BranchAction::Delete => {
+                branch.delete()?;
+                write!(
+                    stdout, 
+                    "Deleted branch '{}', to undo run `git branch {} {}`\r\n",
+                    branch.name, branch.name, branch.id
+                )?;
+            },
+        }
+    }
+    Ok(())
+}
+
 fn get_branch_action_from_user(
     stdout: &mut Stdout, 
     stdin: &mut Bytes<Stdin>, 
@@ -50,7 +81,7 @@ fn get_branch_action_from_user(
 ) -> Result<BranchAction> {
     write!(
         stdout, 
-        "'{}' ({}) last commit at {} (k/d/q/?)",
+        "'{}' ({}) last commit at {} (k/d/q/?) > ",
         branch.name, &branch.id.to_string()[0..10], branch.time
     )?;
     stdout.flush()?;
@@ -61,30 +92,25 @@ fn get_branch_action_from_user(
     };
 
     let c = char::from(byte);
-    
+    write!(stdout, "{}\r\n", c)?;
+
     if c == '?' {
-        write!(stdout, "\r\n");
-        write!(stdout, "Here are what the commands mean:\r\n");
-        write!(stdout, "k - Keep the branch\r\n");
-        write!(stdout, "d - Delete the branch\r\n");
-        write!(stdout, "q - Quit\r\n");
-        write!(stdout, "? - Show this help text\r\n");
+        write!(stdout, "Here are what the commands mean:\r\n")?;
+        write!(stdout, "k - Keep the branch\r\n")?;
+        write!(stdout, "d - Delete the branch\r\n")?;
+        write!(stdout, "q - Quit\r\n")?;
+        write!(stdout, "? - Show this help text\r\n")?;
         stdout.flush()?;
         get_branch_action_from_user(stdout, stdin, branch)
     } else {
-        let action = BranchAction::try_from(c)?;
-        match action {
-            BranchAction::Quit => Ok(BranchAction::Quit),
-            BranchAction::Keep => Ok(BranchAction::Keep),
-            BranchAction::Delete => Ok(BranchAction::Delete),
-        }
+        BranchAction::try_from(c)
     }
 
 }
 
 fn get_branches(repo: &Repository) -> Result<Vec<Branch>> {
     let mut brances = repo
-        .branches(None)?
+        .branches(Some(BranchType::Local))?
         .map(|branch| -> Result<_> {
             let (branch, _) = branch?;
             let name = String::from_utf8(branch.name_bytes()?.to_vec())?;
@@ -98,8 +124,17 @@ fn get_branches(repo: &Repository) -> Result<Vec<Branch>> {
             Ok(Branch {
                 id: commit.id(),
                 time,
-                name
+                name,
+                is_head: branch.is_head(),
+                branch,
             })
+        })
+        .filter(|branch| {
+            if let Ok(branch) = branch {
+                branch.name != "master"
+            } else {
+                true
+            }
         })
         .collect::<Result<Vec<_>>>()?;
 
@@ -112,7 +147,14 @@ struct Branch<'repo> {
     id: Oid,
     time: NaiveDateTime,
     name: String,
+    is_head: bool,
     branch: git2::Branch<'repo>,
+}
+
+impl <'repo> Branch<'repo> {
+    fn delete(&mut self) -> Result<()> {
+        self.branch.delete().map_err(From::from)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
