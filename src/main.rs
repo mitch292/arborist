@@ -5,18 +5,20 @@ use std::string::FromUtf8Error;
 use git2::{BranchType, Oid, Repository};
 use chrono::prelude::*;
 use chrono::Duration;
+use crossterm::terminal;
+use crossterm::style::{style, Attribute, Color};
 
 // TODO: 
-//  1. Color the output to the terminal
-//  2. Option to delete remote branches
-//  3. Create an App struct where stdout and stdin live
+//  - Option to delete remote branches
+//  - Create an App struct where stdout and stdin live
+//  - Use structopt? 
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 fn main() {
     let result = (|| -> Result<_> {
         let repo = Repository::open_from_env()?;
-        crossterm::terminal::enable_raw_mode()?;
+        terminal::enable_raw_mode()?;
     
         let mut stdout = io::stdout();
         let mut stdin = io::stdin().bytes();
@@ -24,7 +26,13 @@ fn main() {
         let mut branches = get_branches(&repo)?;
 
         if branches.is_empty() {
-            write!(stdout, "Found no branches (master is ignored)\r\n")?;
+            write!(
+                stdout,
+                "{}\r\n",
+                style("Found no branches (master is ignored)")
+                    .with(Color::Yellow)
+                    .attribute(Attribute::Dim)
+            )?;
         } else {
             for branch in &mut branches {
                 act_on_branch(branch, &mut stdout, &mut stdin)?;
@@ -35,7 +43,7 @@ fn main() {
 
     })();
 
-    crossterm::terminal::disable_raw_mode().ok();
+    terminal::disable_raw_mode().ok();
 
     match result {
         Ok(()) => {}
@@ -52,10 +60,13 @@ fn act_on_branch(
     stdin: &mut Bytes<Stdin>
 ) -> Result<()> {
     if branch.is_head {
+        let head_message = style(
+            format!("Ignoring '{}' because it is the current branch", branch.name)
+        ).with(Color::Yellow).attribute(Attribute::Dim);
         write!(
             stdout,
-            "Ignoring '{}' because it is the current branch\r\n",
-            branch.name
+            "{}\r\n",
+            head_message
         )?;
     } else {
         match get_branch_action_from_user(stdout, stdin, &branch)? {
@@ -63,11 +74,16 @@ fn act_on_branch(
             BranchAction::Keep => {},
             BranchAction::Delete => {
                 branch.delete()?;
-                write!(
-                    stdout, 
-                    "Deleted branch '{}', to undo run `git branch {} {}`\r\n",
+                let message = format!(
+                    "Deleted branch '{}', to undo run `git branch {} {}`",
                     branch.name, branch.name, branch.id
-                )?;
+                );
+
+                let styled_message = style(message)
+                    .with(Color::Yellow)
+                    .attribute(Attribute::Dim);
+
+                write!(stdout, "{}\r\n",styled_message)?;
             },
         }
     }
@@ -79,10 +95,17 @@ fn get_branch_action_from_user(
     stdin: &mut Bytes<Stdin>, 
     branch: &Branch
 ) -> Result<BranchAction> {
+    let branch_name = style(format!("'{}'", branch.name)).with(Color::Green);
+    let commit_hash = style(
+        format!("({})", &branch.id.to_string()[0..10])
+    ).attribute(Attribute::Dim);
+    let commit_time = style(format!("{}", branch.time)).with(Color::Green);
+    let commands = style("(k/d/q/?)").attribute(Attribute::Bold);
+
     write!(
         stdout, 
-        "'{}' ({}) last commit at {} (k/d/q/?) > ",
-        branch.name, &branch.id.to_string()[0..10], branch.time
+        "{} {} last commit at {} {} > ",
+        branch_name, commit_hash, commit_time, commands
     )?;
     stdout.flush()?;
 
@@ -95,11 +118,13 @@ fn get_branch_action_from_user(
     write!(stdout, "{}\r\n", c)?;
 
     if c == '?' {
-        write!(stdout, "Here are what the commands mean:\r\n")?;
-        write!(stdout, "k - Keep the branch\r\n")?;
-        write!(stdout, "d - Delete the branch\r\n")?;
-        write!(stdout, "q - Quit\r\n")?;
-        write!(stdout, "? - Show this help text\r\n")?;
+        write!(stdout, "\r\n")?;
+        write!(stdout, "{}\r\n", style("Here are what the commands mean:").attribute(Attribute::Dim))?;
+        write!(stdout, "{} - Keep the branch\r\n", style("k").attribute(Attribute::Bold))?;
+        write!(stdout, "{} - Delete the branch\r\n", style("d").attribute(Attribute::Bold))?;
+        write!(stdout, "{} - Quit\r\n", style("q").attribute(Attribute::Bold))?;
+        write!(stdout, "{} - Show this help text\r\n", style("?").attribute(Attribute::Bold))?;
+        write!(stdout, "\r\n")?;
         stdout.flush()?;
         get_branch_action_from_user(stdout, stdin, branch)
     } else {

@@ -1,5 +1,5 @@
 [package]
-name = "delete-git-branches"
+name = "arborist"
 version = "0.1.0"
 authors = ["Andrew Mitchell <andrewpmitchell7@gmail.com>"]
 edition = "2018"
