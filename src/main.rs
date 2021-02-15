@@ -8,13 +8,7 @@ use chrono::Duration;
 use crossterm::terminal;
 use crossterm::style::{style, Attribute, Color};
 
-// TODO: 
-//  - Option to delete remote branches
-//  - Create an App struct where stdout and stdin live
-//  - Use structopt? 
-
 type Result<T, E = Error> = std::result::Result<T, E>;
-
 
 fn main() {
     let result = (|| -> Result<_> {
@@ -186,6 +180,7 @@ struct Branch<'repo> {
     name: String,
     is_head: bool,
     branch: git2::Branch<'repo>,
+    remote: git2::
 }
 
 impl <'repo> Branch<'repo> {
