@@ -180,7 +180,6 @@ struct Branch<'repo> {
     name: String,
     is_head: bool,
     branch: git2::Branch<'repo>,
-    remote: git2::
 }
 
 impl <'repo> Branch<'repo> {
