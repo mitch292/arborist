@@ -15,19 +15,19 @@ use crossterm::style::{style, Attribute, Color};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
+
 fn main() {
     let result = (|| -> Result<_> {
         let repo = Repository::open_from_env()?;
         terminal::enable_raw_mode()?;
-    
-        let mut stdout = io::stdout();
-        let mut stdin = io::stdin().bytes();
+
+        let mut app = App::new();
 
         let mut branches = get_branches(&repo)?;
 
         if branches.is_empty() {
             write!(
-                stdout,
+                app.stdout,
                 "{}\r\n",
                 style("Found no branches (master is ignored)")
                     .with(Color::Yellow)
@@ -35,7 +35,7 @@ fn main() {
             )?;
         } else {
             for branch in &mut branches {
-                act_on_branch(branch, &mut stdout, &mut stdin)?;
+                act_on_branch(branch, &mut app)?;
             }
         }
 
@@ -56,20 +56,19 @@ fn main() {
 
 fn act_on_branch(
     branch: &mut Branch,
-    stdout: &mut Stdout,
-    stdin: &mut Bytes<Stdin>
+    app: &mut App,
 ) -> Result<()> {
     if branch.is_head {
         let head_message = style(
             format!("Ignoring '{}' because it is the current branch", branch.name)
         ).with(Color::Yellow).attribute(Attribute::Dim);
         write!(
-            stdout,
+            app.stdout,
             "{}\r\n",
             head_message
         )?;
     } else {
-        match get_branch_action_from_user(stdout, stdin, &branch)? {
+        match get_branch_action_from_user(app, &branch)? {
             BranchAction::Quit => return Ok(()),
             BranchAction::Keep => {},
             BranchAction::Delete => {
@@ -83,7 +82,7 @@ fn act_on_branch(
                     .with(Color::Yellow)
                     .attribute(Attribute::Dim);
 
-                write!(stdout, "{}\r\n",styled_message)?;
+                write!(app.stdout, "{}\r\n",styled_message)?;
             },
         }
     }
@@ -91,8 +90,7 @@ fn act_on_branch(
 }
 
 fn get_branch_action_from_user(
-    stdout: &mut Stdout, 
-    stdin: &mut Bytes<Stdin>, 
+    app: &mut App,
     branch: &Branch
 ) -> Result<BranchAction> {
     let branch_name = style(format!("'{}'", branch.name)).with(Color::Green);
@@ -103,30 +101,30 @@ fn get_branch_action_from_user(
     let commands = style("(k/d/q/?)").attribute(Attribute::Bold);
 
     write!(
-        stdout, 
+        app.stdout, 
         "{} {} last commit at {} {} > ",
         branch_name, commit_hash, commit_time, commands
     )?;
-    stdout.flush()?;
+    app.stdout.flush()?;
 
-    let byte = match stdin.next() {
+    let byte = match app.stdin.next() {
         Some(byte) => byte?,
-        None => return get_branch_action_from_user(stdout, stdin, branch),
+        None => return get_branch_action_from_user(app, branch),
     };
 
     let c = char::from(byte);
-    write!(stdout, "{}\r\n", c)?;
+    write!(app.stdout, "{}\r\n", c)?;
 
     if c == '?' {
-        write!(stdout, "\r\n")?;
-        write!(stdout, "{}\r\n", style("Here are what the commands mean:").attribute(Attribute::Dim))?;
-        write!(stdout, "{} - Keep the branch\r\n", style("k").attribute(Attribute::Bold))?;
-        write!(stdout, "{} - Delete the branch\r\n", style("d").attribute(Attribute::Bold))?;
-        write!(stdout, "{} - Quit\r\n", style("q").attribute(Attribute::Bold))?;
-        write!(stdout, "{} - Show this help text\r\n", style("?").attribute(Attribute::Bold))?;
-        write!(stdout, "\r\n")?;
-        stdout.flush()?;
-        get_branch_action_from_user(stdout, stdin, branch)
+        write!(app.stdout, "\r\n")?;
+        write!(app.stdout, "{}\r\n", style("Here are what the commands mean:").attribute(Attribute::Dim))?;
+        write!(app.stdout, "{} - Keep the branch\r\n", style("k").attribute(Attribute::Bold))?;
+        write!(app.stdout, "{} - Delete the branch\r\n", style("d").attribute(Attribute::Bold))?;
+        write!(app.stdout, "{} - Quit\r\n", style("q").attribute(Attribute::Bold))?;
+        write!(app.stdout, "{} - Show this help text\r\n", style("?").attribute(Attribute::Bold))?;
+        write!(app.stdout, "\r\n")?;
+        app.stdout.flush()?;
+        get_branch_action_from_user(app, branch)
     } else {
         BranchAction::try_from(c)
     }
@@ -166,6 +164,20 @@ fn get_branches(repo: &Repository) -> Result<Vec<Branch>> {
     brances.sort_unstable_by_key(|branch| branch.time);
 
     Ok(brances)
+}
+
+struct App {
+    stdin: Bytes<Stdin>,
+    stdout: Stdout,
+}
+
+impl App {
+    fn new() -> App {
+        App {
+            stdin: io::stdin().bytes(),
+            stdout: io::stdout(),
+        }
+    }
 }
 
 struct Branch<'repo> {
