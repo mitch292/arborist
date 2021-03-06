@@ -1,12 +1,12 @@
-use std::io;
-use std::io::{Read, Write, Stdout, Stdin, Bytes};
-use std::convert::TryFrom;
-use std::string::FromUtf8Error;
-use git2::{BranchType, Oid, Repository};
 use chrono::prelude::*;
 use chrono::Duration;
-use crossterm::terminal;
 use crossterm::style::{style, Attribute, Color};
+use crossterm::terminal;
+use git2::{BranchType, Oid, Repository};
+use std::convert::TryFrom;
+use std::io;
+use std::io::{Bytes, Read, Stdin, Stdout, Write};
+use std::string::FromUtf8Error;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -33,8 +33,7 @@ fn main() {
             }
         }
 
-       Ok(())
-
+        Ok(())
     })();
 
     terminal::disable_raw_mode().ok();
@@ -48,23 +47,19 @@ fn main() {
     }
 }
 
-fn act_on_branch(
-    branch: &mut Branch,
-    app: &mut App,
-) -> Result<()> {
+fn act_on_branch(branch: &mut Branch, app: &mut App) -> Result<()> {
     if branch.is_head {
-        let head_message = style(
-            format!("Ignoring '{}' because it is the current branch", branch.name)
-        ).with(Color::Yellow).attribute(Attribute::Dim);
-        write!(
-            app.stdout,
-            "{}\r\n",
-            head_message
-        )?;
+        let head_message = style(format!(
+            "Ignoring '{}' because it is the current branch",
+            branch.name
+        ))
+        .with(Color::Yellow)
+        .attribute(Attribute::Dim);
+        write!(app.stdout, "{}\r\n", head_message)?;
     } else {
         match get_branch_action_from_user(app, &branch)? {
             BranchAction::Quit => return Ok(()),
-            BranchAction::Keep => {},
+            BranchAction::Keep => {}
             BranchAction::Delete => {
                 branch.delete()?;
                 let message = format!(
@@ -72,30 +67,24 @@ fn act_on_branch(
                     branch.name, branch.name, branch.id
                 );
 
-                let styled_message = style(message)
-                    .with(Color::Yellow)
-                    .attribute(Attribute::Dim);
+                let styled_message = style(message).with(Color::Yellow).attribute(Attribute::Dim);
 
-                write!(app.stdout, "{}\r\n",styled_message)?;
-            },
+                write!(app.stdout, "{}\r\n", styled_message)?;
+            }
         }
     }
     Ok(())
 }
 
-fn get_branch_action_from_user(
-    app: &mut App,
-    branch: &Branch
-) -> Result<BranchAction> {
+fn get_branch_action_from_user(app: &mut App, branch: &Branch) -> Result<BranchAction> {
     let branch_name = style(format!("'{}'", branch.name)).with(Color::Green);
-    let commit_hash = style(
-        format!("({})", &branch.id.to_string()[0..10])
-    ).attribute(Attribute::Dim);
+    let commit_hash =
+        style(format!("({})", &branch.id.to_string()[0..10])).attribute(Attribute::Dim);
     let commit_time = style(format!("{}", branch.time)).with(Color::Green);
     let commands = style("(k/d/q/?)").attribute(Attribute::Bold);
 
     write!(
-        app.stdout, 
+        app.stdout,
         "{} {} last commit at {} {} > ",
         branch_name, commit_hash, commit_time, commands
     )?;
@@ -111,18 +100,37 @@ fn get_branch_action_from_user(
 
     if c == '?' {
         write!(app.stdout, "\r\n")?;
-        write!(app.stdout, "{}\r\n", style("Here are what the commands mean:").attribute(Attribute::Dim))?;
-        write!(app.stdout, "{} - Keep the branch\r\n", style("k").attribute(Attribute::Bold))?;
-        write!(app.stdout, "{} - Delete the branch\r\n", style("d").attribute(Attribute::Bold))?;
-        write!(app.stdout, "{} - Quit\r\n", style("q").attribute(Attribute::Bold))?;
-        write!(app.stdout, "{} - Show this help text\r\n", style("?").attribute(Attribute::Bold))?;
+        write!(
+            app.stdout,
+            "{}\r\n",
+            style("Here are what the commands mean:").attribute(Attribute::Dim)
+        )?;
+        write!(
+            app.stdout,
+            "{} - Keep the branch\r\n",
+            style("k").attribute(Attribute::Bold)
+        )?;
+        write!(
+            app.stdout,
+            "{} - Delete the branch\r\n",
+            style("d").attribute(Attribute::Bold)
+        )?;
+        write!(
+            app.stdout,
+            "{} - Quit\r\n",
+            style("q").attribute(Attribute::Bold)
+        )?;
+        write!(
+            app.stdout,
+            "{} - Show this help text\r\n",
+            style("?").attribute(Attribute::Bold)
+        )?;
         write!(app.stdout, "\r\n")?;
         app.stdout.flush()?;
         get_branch_action_from_user(app, branch)
     } else {
         BranchAction::try_from(c)
     }
-
 }
 
 fn get_branches(repo: &Repository) -> Result<Vec<Branch>> {
@@ -137,7 +145,7 @@ fn get_branches(repo: &Repository) -> Result<Vec<Branch>> {
             let time = commit.time();
             let offset = Duration::minutes(i64::from(time.offset_minutes()));
             let time = NaiveDateTime::from_timestamp(time.seconds(), 0) + offset;
-        
+
             Ok(Branch {
                 id: commit.id(),
                 time,
@@ -182,7 +190,7 @@ struct Branch<'repo> {
     branch: git2::Branch<'repo>,
 }
 
-impl <'repo> Branch<'repo> {
+impl<'repo> Branch<'repo> {
     fn delete(&mut self) -> Result<()> {
         self.branch.delete().map_err(From::from)
     }
@@ -190,7 +198,6 @@ impl <'repo> Branch<'repo> {
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
-
     #[error(transparent)]
     CrosstermError(#[from] crossterm::ErrorKind),
 
@@ -204,7 +211,7 @@ enum Error {
     FromUtf8Error(#[from] FromUtf8Error),
 
     #[error("Invalid input, Don't know what '{0}' means")]
-    InvalidInput(char)
+    InvalidInput(char),
 }
 
 enum BranchAction {
@@ -221,7 +228,7 @@ impl TryFrom<char> for BranchAction {
             'k' => Ok(BranchAction::Keep),
             'd' => Ok(BranchAction::Delete),
             'q' => Ok(BranchAction::Quit),
-            _ => Err(Error::InvalidInput(value))
+            _ => Err(Error::InvalidInput(value)),
         }
     }
 }

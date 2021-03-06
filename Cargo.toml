@@ -1,5 +1,6 @@
 [package]
 name = "arborist-git"
+description = "A CLI tool to delete local git branches"
 version = "0.1.0"
 authors = ["Andrew Mitchell <andrewpmitchell7@gmail.com>"]
 license = "MIT OR Apache-2.0"
