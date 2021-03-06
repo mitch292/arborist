@@ -4,7 +4,7 @@ Surveyor is a cli tool that you can use to manage and delete your local git bran
 
 ## What's required to use Arborist?
 
-Nothing! Just run arborist from within the git repository where you'd like to delete you're local branches.
+Nothing! Just run arborist from within the git repository where you'd like to delete you're local branches. To run arborist, run `arborist-git`
 
 ## How do I install Arborist?
 
